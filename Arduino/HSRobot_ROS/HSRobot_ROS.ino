@@ -6,6 +6,8 @@
 #include "IMU.h"
 #include "Robot.h"
 
+#define ACKNOWLEDGMENT  'k'
+
 /******** Motion Variables ********/
 float vel = 0.0 ; 
 float omega = 0.0 ; 
@@ -25,11 +27,13 @@ ros::Publisher odom_pub("/wheel_odom", &odom_msg) ;
 geometry_msgs::Accel      imu_msg ; 
 ros::Publisher imu_pub("/imu_reading", &imu_msg) ; 
 
-// rtos
+// rtos_pos
 std_msgs::Int8            rtos_msg ; 
 ros::Publisher rtos_pub("/rtos_pos", &rtos_msg) ; 
 
 /******** ROS Subscribers ********/
+
+// cmd_vel
 void motor_cb (const geometry_msgs::Twist& msgIn)
 {
   // update new movement 
@@ -42,6 +46,17 @@ void motor_cb (const geometry_msgs::Twist& msgIn)
 
 ros::Subscriber<geometry_msgs::Twist> cmdVel_sub("/cmd_vel", &motor_cb) ; 
 
+// rtos_ack
+void rtos_cb (const std_msgs::Int8& msgIn)
+{
+  if (Serial3.available())
+  {
+    Serial3.write(msgIn.data);
+  }
+}
+
+ros::Subscriber<std_msgs::Int8> rtos_sub("/rtos_ack", &rtos_cb) ; 
+
 void setup()
 {
   /******** IMU Initilaization ********/
@@ -53,9 +68,11 @@ void setup()
   /******** ROS Setup ********/
   nh.initNode() ;
   nh.advertise(odom_pub) ; 
-  nh.advertise(imu_pub) ; 
-  nh.advertise(rtos_pub) ;
+  nh.advertise(imu_pub) ;
   nh.subscribe(cmdVel_sub) ;
+   
+  nh.advertise(rtos_pub) ;
+  nh.subscribe(rtos_sub) ;
 }
 
 void loop() 
@@ -64,12 +81,12 @@ void loop()
   nh.spinOnce(); 
   
   /******** Moving Stream Stop ********/
-  if ((millis() - Elapsed_Time) > 1000)
+  if ((millis() - Elapsed_Time) > 800)
   {
     vel = omega = 0 ; 
   }            
   
-  robot.setTarget(vel, omega);
+  robot.setTarget(vel, omega);   
 
   /******** ROS Encoder Publishing ********/
   robot.update();
@@ -87,6 +104,7 @@ void loop()
   imu_msg.angular.z = gz ;
   imu_pub.publish(&imu_msg) ;
 
+  /******** ROS rtos Publishing ********/
   if (Serial3.available())
   {
     rtos_msg.data = Serial3.read();
